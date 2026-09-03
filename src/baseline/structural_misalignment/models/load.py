@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
 
-from src.baseline.structural_misalignment.models.gnn import HeteroGraphClassifier
+from src.baseline.structural_misalignment.models.gnn import HeteroGraphClassifier, model_options_from_metadata
 
 
 @dataclass
@@ -37,11 +37,7 @@ def load_graph_model_bundle(model_path: str) -> GraphModelBundle:
         )
 
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    model = HeteroGraphClassifier(
-        input_dim=int(metadata.get("input_dim", 768)),
-        hidden_dim=int(metadata.get("hidden_dim", 128)),
-        dropout=float(metadata.get("dropout", 0.1)),
-    )
+    model = HeteroGraphClassifier(**model_options_from_metadata(metadata))
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
     model.load_state_dict(state)
     model.eval()

@@ -16,7 +16,7 @@ from src.eval.attack_finalize import require_finalized_attack_rows
 from src.eval.report import load_jsonl_rows
 from src.baseline.structural_misalignment.embeddings import clear_embedding_encoder_cache
 from src.baseline.structural_misalignment.graph.cache import structural_graph_key
-from src.baseline.structural_misalignment.graph.build import build_pyg_heterodata
+from src.baseline.structural_misalignment.graph.build import any_augmentation, build_pyg_heterodata, graph_feature_options
 from src.baseline.structural_misalignment.models.train import train_graph_model
 from src.baseline.structural_misalignment.pipeline import build_structural_graph
 
@@ -78,6 +78,8 @@ def _build_graphs(
 ) -> tuple[List[Any], List[Dict[str, Any]]]:
     artifact_root.mkdir(parents=True, exist_ok=True)
     graph_config_hash = config_hash(config)
+    feature_opts = graph_feature_options(config)
+    use_augmented_features = any_augmentation(feature_opts)
 
     def load_existing_graph(row: Dict[str, Any], graph_key: str) -> tuple[Any, Dict[str, Any]] | None:
         if bool(config.get("rebuild_graph_cache", False)) or _env_flag("CFG_REBUILD_STRUCTURAL_GRAPHS"):
@@ -97,7 +99,10 @@ def _build_graphs(
 
         graph_payload = json.loads(graph_json.read_text(encoding="utf-8"))
         hetero_graph = None
-        if graph_pt.exists():
+        # The cached .pt was serialized without the augmented features; when they
+        # are enabled we must rebuild from graph.json (which retains code-node
+        # metadata + grounding scores) so the tensors carry the extra dims.
+        if graph_pt.exists() and not use_augmented_features:
             try:
                 import torch
 
@@ -105,7 +110,7 @@ def _build_graphs(
             except Exception:
                 hetero_graph = None
         if hetero_graph is None:
-            hetero_graph = build_pyg_heterodata(graph_payload)
+            hetero_graph = build_pyg_heterodata(graph_payload, **feature_opts)
 
         manifest_row = {
             "instance_id": row.get("instance_id", "unknown"),
@@ -148,6 +153,7 @@ def _build_graphs(
                 module_config_hash=graph_config_hash,
                 fidelity_mode=fidelity_mode,
                 graph_label=int(row.get("graph_label", 0)),
+                injection_markers=(row.get("synth", {}) or {}).get("injection_markers"),
             )
         except Exception as exc:
             raise RuntimeError(
@@ -199,7 +205,11 @@ def _build_graphs(
         if tqdm is not None:
             iterator = tqdm(rows_to_build, desc=f"build-graphs:{artifact_root.name}", unit="graph")
         for row in iterator:
-            hetero_graph, manifest_row = build_one(row)
+            try:
+                hetero_graph, manifest_row = build_one(row)
+            except (RuntimeError, MemoryError) as exc:
+                print(f"WARNING: skipping instance {row.get('instance_id', 'unknown')}: {exc}", flush=True)
+                continue
             graphs.append(hetero_graph)
             manifest.append(manifest_row)
     else:
@@ -453,6 +463,21 @@ def main() -> int:
         seed=int(train_config.get("seed", 42)),
         embedding_model_name=str(graph_config.get("embedding_model_name", "microsoft/codebert-base")),
         embedding_pooling=str(graph_config.get("embedding_pooling", "mean")),
+        classifier_head=str(train_config.get("classifier_head", "mlp")),
+        graph_feature_flags={
+            "node_security_features": bool(graph_config.get("node_security_features", False)),
+            "grounding_residual_feature": bool(graph_config.get("grounding_residual_feature", False)),
+            "edge_weighted_grounding": bool(graph_config.get("edge_weighted_grounding", False)),
+            "node_aux_labels": bool(graph_config.get("node_aux_labels", False)),
+            "encoder_finetune": bool(graph_config.get("encoder_finetune", False)),
+            "encoder_trainable_layers": int(graph_config.get("encoder_trainable_layers", 2)),
+            "encoder_max_len": int(graph_config.get("encoder_max_len", 128)),
+            "encoder_scope": str(graph_config.get("encoder_scope", "added")),
+            "embedding_model_name": str(graph_config.get("embedding_model_name", "microsoft/codebert-base")),
+        },
+        aux_weight=float(train_config.get("aux_weight", 0.0)),
+        contrastive_weight=float(train_config.get("contrastive_weight", 0.0)),
+        encoder_lr=float(train_config.get("encoder_lr", 2e-5)),
     )
     print(json.dumps(metrics, indent=2, sort_keys=True))
     return 0

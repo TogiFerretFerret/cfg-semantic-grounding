@@ -15,10 +15,49 @@ from src.baseline.structural_misalignment.models.load import load_graph_model_bu
 from src.baseline.structural_misalignment.pipeline import build_structural_graph
 
 
+def _feature_opts_from_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Reproduce the exact graph augmentation the model was trained with.
+
+    Derived from model metadata (not the defense config) so inference-time
+    graphs cannot silently mismatch the checkpoint's expected dimensions.
+    Node aux labels are training-only (no markers at inference), so off here."""
+    encoder = None
+    if metadata.get("encoder_finetune"):
+        encoder = {
+            "model_name": str(metadata.get("embedding_model_name", "microsoft/codebert-base")),
+            "max_len": int(metadata.get("encoder_max_len", 128)),
+            "scope": str(metadata.get("encoder_scope", "added")),
+            "trainable_layers": int(metadata.get("encoder_trainable_layers", 2)),
+        }
+    return {
+        "add_security_features": bool(metadata.get("node_security_features", False)),
+        "add_grounding_residual": bool(metadata.get("grounding_residual_feature", False)),
+        "add_edge_weights": bool(metadata.get("edge_weighted_grounding", False)),
+        "add_node_labels": False,
+        "encoder": encoder,
+    }
+
+
+def _build_config_from_metadata(base_config: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Inject the checkpoint's augmentation flags into the graph-build config so a
+    live (non-prebuilt) inference graph matches the trained model."""
+    return {
+        **base_config,
+        "node_security_features": bool(metadata.get("node_security_features", False)),
+        "grounding_residual_feature": bool(metadata.get("grounding_residual_feature", False)),
+        "edge_weighted_grounding": bool(metadata.get("edge_weighted_grounding", False)),
+        "encoder_finetune": bool(metadata.get("encoder_finetune", False)),
+        "encoder_trainable_layers": int(metadata.get("encoder_trainable_layers", 2)),
+        "encoder_max_len": int(metadata.get("encoder_max_len", 128)),
+        "encoder_scope": str(metadata.get("encoder_scope", "added")),
+    }
+
+
 def _load_prebuilt_graph(
     *,
     model_path: str,
     repo_code: Dict[str, Any],
+    feature_opts: Dict[str, bool],
 ) -> Optional[Tuple[Dict[str, Any], Any, Dict[str, Any]]]:
     model_dir = Path(model_path).expanduser().resolve()
     if model_dir.is_file():
@@ -43,7 +82,7 @@ def _load_prebuilt_graph(
         return None
 
     graph_payload = json.loads(graph_json_path.read_text(encoding="utf-8"))
-    hetero_graph = build_pyg_heterodata(graph_payload)
+    hetero_graph = build_pyg_heterodata(graph_payload, **feature_opts)
     metadata = {
         "artifact_paths": artifacts,
         "graph_key": graph_key,
@@ -81,17 +120,22 @@ class StructuralMisalignmentDefense(BaseDefense):
         defense_root = self.run_root / "artifacts" / "defenses" / instance_id / self.name
         try:
             bundle = load_graph_model_bundle(model_path)
+            feature_opts = _feature_opts_from_metadata(bundle.metadata)
             prebuilt = None
             if bool(self.config.get("reuse_prebuilt_graphs", True)):
-                prebuilt = _load_prebuilt_graph(model_path=model_path, repo_code=repo_code)
+                prebuilt = _load_prebuilt_graph(
+                    model_path=model_path, repo_code=repo_code, feature_opts=feature_opts
+                )
             if prebuilt is not None:
                 graph_payload, hetero_graph, graph_meta = prebuilt
             else:
+                # Match the checkpoint's augmentation regardless of defense config.
+                build_config = _build_config_from_metadata(self.config, bundle.metadata)
                 graph_payload, hetero_graph, graph_meta = build_structural_graph(
                     prompt=prompt,
                     patch_text=str(code_or_patch or ""),
                     repo_code=repo_code,
-                    config=self.config,
+                    config=build_config,
                     artifact_root=defense_root,
                     llm_client=self.llm_client,
                     module_name=self.name,

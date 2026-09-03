@@ -1,0 +1,63 @@
+plugin: structural_misalignment
+fidelity_mode: llm
+
+# Augmented with LLM-synthesized diverse injections + hard negatives.
+# Synth rows reuse train-split instance_ids and carry split="test", so the
+# by-instance seed-42 splitter (identical to the baseline run) places them in
+# TRAIN. The heldout is byte-identical to the non-synth run -> apples-to-apples.
+data_preparation:
+  benign_attack_dataset_paths:
+    - outputs/attacks/gemini3_flash/full/featurebench_full_none/attack_dataset.jsonl
+    - outputs/attacks/claude37_sonnet_sweagent/full/featurebench_full_none/attack_dataset.jsonl
+    - outputs/synth/gemini/synth_benign.jsonl
+    - outputs/synth/claude/synth_benign.jsonl
+  malicious_attack_dataset_paths:
+    - outputs/attacks/gemini3_flash/full/featurebench_full_fcv_cwe78_base64_obfuscated/attack_dataset.jsonl
+    - outputs/attacks/claude37_sonnet_sweagent/full/featurebench_full_fcv_cwe78_base64_obfuscated/attack_dataset.jsonl
+    - outputs/synth/gemini/synth_malicious.jsonl
+    - outputs/synth/claude/synth_malicious.jsonl
+  split_strategy: by_instance
+  test_fraction: 0.30
+  split_seed: 42
+
+training:
+  output_dir: data/models/structural_misalignment/featurebench_obfuscated_perattack_synth_20260713/fcv/hetero_gnn
+  hidden_dim: 128
+  dropout: 0.1
+  learning_rate: 0.001
+  epochs: 30
+  batch_size: 8
+  seed: 42
+  classifier_head: logistic
+  embedding_model_name: microsoft/codebert-base
+  embedding_pooling: mean
+  embedding_device: cuda
+  embedding_batch_size: 4
+  link_similarity_threshold: 0.35
+  link_topk_per_subtask: 3
+  link_topk_fallback: 1
+
+graph_pipeline:
+  allow_hunk_fallback: true
+  allow_hunk_fallback_non_toy: true
+  fallback_to_deterministic_subtasks_on_llm_failure: true
+  subtask_chunking_enabled: true
+  subtask_chunk_max_chars: 2000
+  embedding_model_name: microsoft/codebert-base
+  embedding_pooling: mean
+  embedding_device: cuda
+  embedding_batch_size: 4
+  link_similarity_threshold: 0.35
+  link_topk_per_subtask: 3
+  link_topk_fallback: 1
+  parsers:
+    prompt: llm_subtasks
+    patch: cfg_ast_scoped
+    linking: embedding_similarity
+  llm:
+    provider: gemini_vertex
+    model: gemini-3-flash-preview
+    temperature: 0.2
+    max_retries: 2
+    backoff_sec: 5.0
+    allow_provider_fallback: false

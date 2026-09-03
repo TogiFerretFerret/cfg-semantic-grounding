@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from src.baseline.structural_misalignment.embeddings import encode_texts, serialize_code_node_for_embedding
-from src.baseline.structural_misalignment.graph.build import build_canonical_graph, build_pyg_heterodata, write_graph_artifacts
+from src.baseline.structural_misalignment.graph.build import build_canonical_graph, build_pyg_heterodata, graph_feature_options, write_graph_artifacts
 from src.baseline.structural_misalignment.grounding.schemas import normalize_subtasks, serialize_subtask_for_embedding
 from src.baseline.structural_misalignment.parsers.registry import get_linker, get_patch_parser, get_prompt_parser
 
@@ -31,6 +31,7 @@ def build_structural_graph(
     module_config_hash: str,
     fidelity_mode: str,
     graph_label: int = 0,
+    injection_markers: Any = None,
 ) -> Tuple[Dict[str, Any], Any, Dict[str, Any]]:
     parser_config = config.get("parsers", {}) if isinstance(config.get("parsers"), dict) else {}
     prompt_parser_name = str(parser_config.get("prompt", "deterministic_subtasks")).strip()
@@ -129,9 +130,10 @@ def build_structural_graph(
         links=links,
         subtask_features=subtask_embeddings.vectors,
         code_features=code_embeddings.vectors,
+        injection_markers=list(injection_markers) if injection_markers else None,
     )
     artifact_paths = write_graph_artifacts(artifact_root / "graph", graph_payload)
-    hetero_graph = build_pyg_heterodata(graph_payload)
+    hetero_graph = build_pyg_heterodata(graph_payload, **graph_feature_options(config))
 
     metadata = {
         "prompt_parser": prompt_parser_name,
