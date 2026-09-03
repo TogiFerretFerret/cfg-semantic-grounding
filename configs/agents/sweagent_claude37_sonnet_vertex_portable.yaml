@@ -7,10 +7,13 @@ command:
   - "$SWEAGENT_DEFAULT_CONFIG"
   - "--config"
   - "$CFG_SWEAGENT_NO_CACHE_CONFIG"
-  - "--agent.model.name=vertex_ai/claude-sonnet-4@20250514"
+  - "--config"
+  - "/home/river/.cache/cfg-semantic-grounding/SWE-agent/config/tools_override.yaml"
+  - "--agent.model.name=vertex_ai/claude-sonnet-4-6"
   - "--agent.model.temperature=0"
-  - "--agent.model.per_instance_call_limit=40"
-  - "--agent.model.per_instance_cost_limit=0"
+  - "--agent.model.top_p=null"
+  - "--agent.model.per_instance_call_limit=80"
+  - "--agent.model.per_instance_cost_limit=8.0"
   - "--agent.model.total_cost_limit=0"
   - "--agent.model.max_output_tokens=8192"
   - "--env.deployment.type=local"
@@ -25,7 +28,7 @@ command:
 output_mode: git_diff
 output_parser: unified_diff_auto
 missing_tool_behavior: fail
-timeout_sec: 900
+timeout_sec: 1800
 cleanup_git_after_run: true
 allow_empty_patch: true
 prompt_template: |

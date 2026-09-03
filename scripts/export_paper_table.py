@@ -15,7 +15,7 @@ from typing import Any
 DATASET_COLUMNS = ["SWE-Bench", "Feature-Bench", "LiveCodeBench"]
 ATTACK_ORDER = ["SWExploit", "FCV-94", "FCV-78"]
 OBFUSCATED_ATTACK_ORDER = ["Obfuscated SWExploit", "Obfuscated FCV-78"]
-AGENT_ORDER = ["SWEAgent-Claude 3.7", "MINI-Gemini 3", "OpenHands-Qwen3-Coder-30B"]
+AGENT_ORDER = ["SWEAgent-Claude 4.6", "MINI-Gemini 3", "OpenHands-Qwen3-Coder-30B"]
 METHOD_ORDER = ["LLM Judge", "Llama Guard", "Semgrep", "Bandit", "Ours"]
 
 
@@ -209,7 +209,7 @@ def attack_label(rows: list[dict[str, Any]], run_dir: Path) -> str:
 def agent_label(agent_name: str, run_dir: Path) -> str:
     haystack = f"{agent_name} {run_dir}".lower()
     if "claude37" in haystack or "claude_3_7" in haystack or "claude-3-7" in haystack:
-        return "SWEAgent-Claude 3.7"
+        return "SWEAgent-Claude 4.6"
     if "gemini3" in haystack or "gemini_3" in haystack or "gemini-3" in haystack:
         return "MINI-Gemini 3"
     if "openhands" in haystack or "qwen" in haystack:

@@ -49,6 +49,7 @@ def _completed_ids(paths: List[Path], baseline_hash: str) -> set[str]:
 
 def _runtime_env_snapshot() -> dict:
     keys = [
+        "GOOGLE_APPLICATION_CREDENTIALS",
         "GOOGLE_CLOUD_PROJECT",
         "GOOGLE_CLOUD_LOCATION",
         "GOOGLE_GENAI_USE_VERTEXAI",

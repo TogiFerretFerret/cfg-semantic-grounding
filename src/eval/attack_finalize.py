@@ -468,7 +468,7 @@ def _validate_attack_row(row: Dict[str, Any]) -> Dict[str, Any]:
     work_dir = Path(tempfile.mkdtemp(prefix="attack_finalize_"))
     patched_repo = work_dir / "repo"
     try:
-        shutil.copytree(repo_path, patched_repo)
+        shutil.copytree(repo_path, patched_repo, ignore_dangling_symlinks=True)
         checkout_ok, checkout_details = _checkout_base_commit(
             patched_repo,
             str(row.get("base_commit", "")),
